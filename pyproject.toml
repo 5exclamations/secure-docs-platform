@@ -1,0 +1,50 @@
+[project]
+name = "secure-docs-platform"
+version = "1.0.0"
+description = "Multi-tenant secure document management API"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "SIM", "C4", "RUF"]
+ignore = ["B008", "S105"]  # B008: FastAPI Depends() defaults; S105: "bearer" token_type literal
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["C408", "E501", "RUF043", "RUF059", "B017", "S101", "S105", "S106", "S311", "S108", "S603", "S607", "S104"]
+"migrations/**" = ["S608"]
+"infra/tests/**" = ["S101", "S603", "S607", "E402", "C408"]
+"scripts/**" = ["S101", "S105", "S106", "S311"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app"]
+
+[[tool.mypy.overrides]]
+module = ["prometheus_client.*", "opentelemetry.instrumentation.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+timeout = 120
+markers = [
+  "integration: needs Postgres, Redis and an S3 endpoint (started automatically if binaries exist)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

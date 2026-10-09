@@ -1,0 +1,148 @@
+# Local development stack. Requires no cloud account: MinIO stands in for S3.
+# Usage: make secrets && docker compose up --build
+name: secure-docs
+
+x-hardening: &hardening
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: docs_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run 'make secrets'}
+      POSTGRES_DB: docs
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?run 'make secrets'}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docs_owner -d docs"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    security_opt: ["no-new-privileges:true"]
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    user: redis   # skip the root->redis privilege drop, which needs SETUID/SETGID that cap_drop removes
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?run 'make secrets'}", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    <<: *hardening
+    networks: [backend]
+
+  minio:
+    build: ./deploy/minio
+    image: secure-docs-minio:local
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?run 'make secrets'}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run 'make secrets'}
+    ports:
+      - "127.0.0.1:9000:9000"   # presigned URLs point here
+      - "127.0.0.1:9001:9001"   # console
+    volumes: [miniodata:/data]
+    <<: *hardening
+    networks: [backend]
+
+  minio-init:
+    build: .
+    image: secure-docs-api:local
+    command: ["python", "scripts/init_bucket.py"]
+    environment:
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_BUCKET: secure-docs
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+    depends_on:
+      minio: {condition: service_healthy}
+    restart: "no"
+    <<: *hardening
+    networks: [backend]
+
+  migrate:
+    build: .
+    image: secure-docs-api:local
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://docs_owner:${POSTGRES_PASSWORD}@postgres:5432/docs
+    depends_on:
+      postgres: {condition: service_healthy}
+    <<: *hardening
+    networks: [backend]
+
+  api:
+    build: .
+    image: secure-docs-api:local
+    environment:
+      ENVIRONMENT: local
+      DATABASE_URL: postgresql+asyncpg://docs_app:${APP_DB_PASSWORD}@postgres:5432/docs
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?run 'make secrets'}
+      METRICS_TOKEN: ${METRICS_TOKEN:?run 'make secrets'}
+      S3_BUCKET: secure-docs
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
+      S3_FORCE_PATH_STYLE: "true"
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+    read_only: true
+    tmpfs: ["/tmp"]
+    <<: *hardening
+    networks: [backend]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["./deploy/otel/collector.yaml:/etc/otelcol/config.yaml:ro"]
+    networks: [backend]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.64.0
+    ports: ["127.0.0.1:16686:16686"]
+    environment: {COLLECTOR_OTLP_ENABLED: "true"}
+    networks: [backend]
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./.secrets/metrics_token:/etc/prometheus/secrets/metrics_token:ro
+    ports: ["127.0.0.1:9090:9090"]
+    networks: [backend]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?run 'make secrets'}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus]
+    networks: [backend]
+
+networks:
+  backend:
+
+volumes:
+  pgdata:
+  miniodata:

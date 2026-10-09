@@ -1,0 +1,47 @@
+name: Infrastructure
+
+on:
+  pull_request:
+    paths: ["infra/**", "app/config.py", ".github/workflows/infra.yml"]
+  push:
+    branches: [main]
+    paths: ["infra/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: fmt, validate, tflint, policy scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -recursive
+        working-directory: infra
+      - name: init (no backend, no credentials needed)
+        run: terraform init -backend=false -input=false
+        working-directory: infra/environments/dev
+      - run: terraform validate
+        working-directory: infra/environments/dev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: EC2 boot script renders, runs against stubs and yields a valid production config
+        run: |
+          pip install -r requirements.txt
+          python infra/tests/verify_user_data.py
+      - uses: terraform-linters/setup-tflint@v4
+      - run: tflint --recursive --chdir=infra
+      - name: Checkov (CIS / AWS best-practice policies)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra
+          framework: terraform
+          quiet: true
+          soft_fail: false
+          # Deliberate exceptions are annotated inline (#checkov:skip=ID:reason) next to the resource.

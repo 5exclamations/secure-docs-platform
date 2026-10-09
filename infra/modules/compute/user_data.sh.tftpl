@@ -1,0 +1,83 @@
+#!/bin/bash
+# Boot script: installs Docker, pulls the image from ECR, builds config from Secrets Manager and
+# starts the service under systemd. Secrets are written to a root-only env file, never to user-data.
+set -euo pipefail
+exec > >(tee /var/log/user-data.log) 2>&1
+
+# AWS CLI v2 ships with Amazon Linux 2023 (there is no 'awscli' package to install).
+dnf install -y docker jq
+systemctl enable --now docker
+
+REGION="${region}"
+get_secret() { aws secretsmanager get-secret-value --region "$REGION" --secret-id "$1" --query SecretString --output text; }
+
+APP="$(get_secret "${app_secret_arn}")"
+DB="$(get_secret "${db_secret_arn}")"
+JWT_SECRET="$(echo "$APP" | jq -r .jwt_secret)"
+APP_DB_PASSWORD="$(echo "$APP" | jq -r .app_db_password)"
+METRICS_TOKEN="$(echo "$APP" | jq -r .metrics_token)"
+OWNER_PASSWORD="$(echo "$DB" | jq -r .password | python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read().strip(), safe=""))')"
+%{ if redis_endpoint != "" ~}
+REDIS_PASSWORD="$(get_secret "${redis_secret_arn}")"
+REDIS_URL="rediss://:$REDIS_PASSWORD@${redis_endpoint}:6379/0"
+%{ else ~}
+# No ElastiCache: Redis runs next to the API on this host (bound to the docker network only).
+REDIS_PASSWORD="$(head -c 32 /dev/urandom | base64 | tr -d '/+=')"
+REDIS_URL="redis://:$REDIS_PASSWORD@redis:6379/0"
+%{ endif ~}
+
+install -d -m 700 /etc/secure-docs
+umask 077
+cat > /etc/secure-docs/api.env <<ENV
+ENVIRONMENT=production
+ENABLE_DOCS=false
+DATABASE_URL=postgresql+asyncpg://docs_app:$APP_DB_PASSWORD@${db_host}:5432/docs?ssl=require
+REDIS_URL=$REDIS_URL
+JWT_SECRET=$JWT_SECRET
+JWT_ISSUER=${jwt_issuer}
+METRICS_TOKEN=$METRICS_TOKEN
+S3_BUCKET=${bucket}
+S3_REGION=${region}
+S3_SSE=aws:kms
+S3_KMS_KEY_ID=${kms_key_arn}
+TRUSTED_PROXY_COUNT=1
+ALLOWED_HOSTS=${allowed_hosts}
+CORS_ORIGINS=${cors_origins}
+ENV
+cat > /etc/secure-docs/migrate.env <<ENV
+MIGRATION_DATABASE_URL=postgresql+asyncpg://docs_owner:$OWNER_PASSWORD@${db_host}:5432/docs?ssl=require
+APP_DB_PASSWORD=$APP_DB_PASSWORD
+ENV
+
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${account_id}.dkr.ecr.${region}.amazonaws.com"
+docker pull "${image_uri}"
+docker network create secure-docs || true
+%{ if redis_endpoint == "" ~}
+docker run -d --name redis --network secure-docs --restart unless-stopped redis:7-alpine \
+  redis-server --requirepass "$REDIS_PASSWORD" --save "" --appendonly no
+%{ endif ~}
+
+# One-shot: create the least-privilege runtime role, then migrate (idempotent).
+docker run --rm --env-file /etc/secure-docs/migrate.env "${image_uri}" python scripts/bootstrap_db_role.py
+docker run --rm --env-file /etc/secure-docs/migrate.env "${image_uri}" alembic upgrade head
+
+cat > /etc/systemd/system/secure-docs.service <<UNIT
+[Unit]
+Description=Secure Docs API
+After=docker.service
+Requires=docker.service
+
+[Service]
+Restart=always
+ExecStartPre=-/usr/bin/docker rm -f api
+ExecStart=/usr/bin/docker run --name api --network secure-docs --env-file /etc/secure-docs/api.env \
+  -p 8000:8000 --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+  --log-driver awslogs --log-opt awslogs-region=${region} --log-opt awslogs-group=${log_group} \
+  ${image_uri}
+ExecStop=/usr/bin/docker stop api
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now secure-docs

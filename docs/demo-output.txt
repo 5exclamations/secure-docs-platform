@@ -1,0 +1,59 @@
+
+== 1. Two organizations register; each gets an isolated tenant and an admin
+  [ok  ] register acme                                              -> 201
+  [ok  ] register globex                                            -> 201
+
+== 2. Acme's admin invites an editor and a viewer
+  [ok  ] create editor                                              -> 201
+  [ok  ] create viewer                                              -> 201
+
+== 3. Editor uploads a contract, then a second version
+  [ok  ] upload v1 (multipart, PDF)                                 -> 201
+  [ok  ] upload v2                                                  -> 200
+  versions: [2, 1]
+  [ok  ] full-text search 'merger'                                  -> 200
+
+== 4. Resource-level sharing with expiry
+  [ok  ] viewer sees nothing before sharing                         -> 404
+  [ok  ] editor grants viewer read access (1 hour)                  -> 201
+  [ok  ] viewer requests a signed download URL                      -> 200
+  fetched 1112 bytes straight from object storage, sha256 matches: True
+  [ok  ] viewer tries to upload a new version                       -> 403
+
+== 5. Tenant isolation: Globex's admin attacks Acme's document
+  [ok  ] globex admin: read metadata                                -> 404
+  [ok  ] globex admin: download                                     -> 404
+  [ok  ] globex admin: list versions                                -> 404
+  [ok  ] globex admin: delete                                       -> 404
+  globex search for 'merger' returns 0 documents
+
+== 6. Expiring, download-limited public share link
+  [ok  ] editor creates link (max 2 downloads)                      -> 201
+  [ok  ] anonymous download #1                                      -> 200
+  [ok  ] anonymous download #2                                      -> 200
+  [ok  ] anonymous download #3                                      -> 410
+
+== 7. Refresh token rotation and theft detection
+  [ok  ] viewer refreshes (rotation)                                -> 200
+  [ok  ] replay of the old refresh token                            -> 401
+  [ok  ] rotated token is now revoked too (family kill)             -> 401
+
+== 8. Audit trail (admin only, organization scoped)
+  [ok  ] editor cannot read the audit log                           -> 403
+  [ok  ] acme admin reads the audit log                             -> 200
+  auth.login                     x3
+  auth.refresh                   x1
+  auth.refresh_reuse_detected    x1
+  authz.denied                   x2
+  document.create                x1
+  document.download              x1
+  document.version_create        x1
+  org.register                   x1
+  permission.grant               x1
+  share.create                   x1
+  share.download                 x2
+  share.download_denied          x1
+  user.create                    x2
+  entries belonging to another tenant: 0
+
+ALL CHECKS PASSED
