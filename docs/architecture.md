@@ -175,6 +175,8 @@ erDiagram
 
 ## Observability
 
+In the local Compose stack Prometheus, Grafana, the OpenTelemetry collector and Jaeger are all present. The AWS reference deployment ships logs to CloudWatch and alerts through CloudWatch alarms only; `/metrics` is deliberately not reachable through the ALB and no Prometheus is deployed there.
+
 | Signal | Implementation |
 |---|---|
 | Logs | structlog JSON on stdout: request id, user id, organization id, trace id; secrets are redacted by key name |

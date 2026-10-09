@@ -45,4 +45,4 @@ Each control names where it is implemented and which automated check proves it. 
 | Checkov | `infra/` | 258 passed, 0 failed, 17 skipped; every skip is annotated at the resource with a reason |
 | `terraform validate` | `infra/environments/dev` | valid (no plan or apply was run: no AWS credentials were used) |
 
-Trivy, gitleaks, CodeQL and tflint are wired into CI but were not run locally, because the tools or the registries behind them were not available in the development sandbox.
+Trivy (filesystem and image), gitleaks, CodeQL and TFLint run in GitHub Actions on every pull request; Trivy and gitleaks were also run locally. See [security-review.md](security-review.md) for what the manual review added on top of the scanners.

@@ -68,9 +68,8 @@ Set `enable_waf = true` and `enable_elasticache = true` for a production-shaped 
 
 | Path | Status |
 |---|---|
-| Application, migrations, RLS, share links, concurrency | Tested against real PostgreSQL 16 and Redis; S3 through moto and through a MinIO server built from source |
-| `scripts/local_stack.py` plus `scripts/demo.py` | Run end to end locally (output in `docs/demo-output.txt`) |
-| Terraform | `fmt`, `validate`, Checkov. Never planned or applied |
-| `docker compose up`, the Dockerfile, `minio` source build inside Docker | `docker compose config` validates the file; images were not built because no Docker daemon was available in the sandbox |
-| GitHub Actions workflows | YAML parsed; not executed |
-| EC2 user-data boot script | Reviewed only |
+| Application, migrations, RLS, share links, concurrency | Tested against real PostgreSQL 16 and Redis, with S3 through moto and through a MinIO server built from source, locally and in GitHub Actions |
+| `docker compose up` from a clean checkout | Runs in GitHub Actions on every pull request: the whole stack starts, `scripts/demo.py` passes, presigned URL expiry is enforced by MinIO, and `scripts/verify_observability.py` confirms Prometheus, Jaeger and Grafana receive real data |
+| Docker image | Built and Trivy-scanned in GitHub Actions; the CI asserts it runs as a non-root user |
+| Terraform | `fmt`, `validate`, TFLint, Checkov and Trivy pass in GitHub Actions; the EC2 boot script is rendered and executed against stubs by `infra/tests/verify_user_data.py`. **Never planned or applied** |
+| Anything that needs real AWS | Unverified; the list is in [infrastructure-review.md](infrastructure-review.md#unverified-aws-specific-behavior) |
