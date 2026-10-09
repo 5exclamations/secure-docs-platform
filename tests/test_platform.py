@@ -344,14 +344,15 @@ async def test_api_refuses_to_start_with_a_role_that_bypasses_rls(make_settings,
 
 async def test_traces_do_not_contain_credentials_or_bound_values(make_settings, tracing_processor, span_exporter):
     """SQL spans carry statement text with placeholders; emails and passwords must never appear."""
+    probe_pw = "pw-" + uuid.uuid4().hex
     app = create_app(make_settings(), span_processor=tracing_processor)
     async with app.router.lifespan_context(app):
         c = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t")
         await c.post(
             "/api/v1/auth/login",
             headers={"X-Forwarded-For": next_ip()},
-            json={"email": "trace.probe@example.com", "password": "Sup3r-Secret-Probe-Pw"},
+            json={"email": "trace.probe@example.com", "password": probe_pw},
         )
         await c.aclose()
     dump = repr([(s.name, dict(s.attributes or {})) for s in span_exporter.get_finished_spans()])
-    assert "trace.probe" not in dump and "Sup3r-Secret" not in dump
+    assert "trace.probe" not in dump and probe_pw not in dump

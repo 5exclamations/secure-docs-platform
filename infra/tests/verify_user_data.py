@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -28,12 +29,13 @@ from app.config import Settings
 
 TEMPLATE = ROOT / "infra/modules/compute/user_data.sh.tftpl"
 RDS_PASSWORD = "Ab/c+d=e:f@g#h?i%j&k!l"  # characters that break naive URL building
+# Random per run: nothing secret-shaped is committed, and every run uses distinct values.
 APP_SECRET = {
-    "jwt_secret": "j" * 64,
-    "app_db_password": "AppDbPass1234567890abcdefghijklmnopqrstuv",
-    "metrics_token": "MetricsToken1234567890abcdefghijklmnop",
+    "jwt_secret": secrets.token_hex(32),
+    "app_db_password": secrets.token_hex(20),
+    "metrics_token": secrets.token_hex(20),
 }
-REDIS_TOKEN = "RedisAuthToken1234567890abcdefghijklmnopqrstuv"
+REDIS_TOKEN = secrets.token_hex(24)
 
 TF = """
 variable "with_redis" { type = bool }

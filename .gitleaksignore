@@ -1,0 +1,5 @@
+# Fingerprints of fake test fixtures that earlier commits contained (a made-up password used to
+# prove credentials never reach traces, and a placeholder application secret in the boot-script
+# test). They are not credentials. Current code generates such values at runtime instead.
+96410edfb42214a13d0a8ec2de9d11d310af1160:tests/test_platform.py:generic-api-key:353
+5fa9c20aef29f9ed367afe0a764de12c2ffeeddb:infra/tests/verify_user_data.py:generic-api-key:33
