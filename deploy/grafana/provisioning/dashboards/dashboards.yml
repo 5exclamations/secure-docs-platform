@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: secure-docs
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

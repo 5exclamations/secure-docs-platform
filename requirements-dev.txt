@@ -1,0 +1,13 @@
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest-timeout==2.4.0
+httpx==0.28.1
+moto[server,s3]==5.2.3
+flask-cors
+ruff==0.16.10
+mypy==2.4.0
+bandit==1.9.4
+pip_audit==2.10.1
+types-boto3[s3]
