@@ -196,6 +196,21 @@ jobs:
         run: python scripts/demo.py --base-url http://localhost:8000
       - name: Presigned URL expiry is enforced by the object store
         run: python scripts/check_presign_expiry.py --base-url http://localhost:8000
+      - name: Prometheus, Jaeger and Grafana receive real telemetry
+        run: |
+          sleep 20   # let at least one scrape interval pass after the demo traffic
+          python scripts/verify_observability.py --env-file .env
+      - name: Screenshots of the running services
+        run: |
+          pip install playwright==1.49.1
+          playwright install --with-deps chromium
+          python scripts/capture_screenshots.py --env-file .env --out screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-screenshots
+          path: screenshots
+          if-no-files-found: ignore
       - name: Logs on failure
         if: failure()
         run: docker compose logs --no-color --tail=200
