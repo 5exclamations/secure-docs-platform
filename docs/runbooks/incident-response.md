@@ -50,11 +50,11 @@ Correlate with application logs by `request_id` (every audit row carries it) and
 
 | Goal | Action | Effect |
 |---|---|---|
-| Lock one user out now | `PATCH /api/v1/users/{id}` with `{"is_active": false}` as an org admin, or `UPDATE users SET is_active=false WHERE id=...` | Next request returns 401, even with a valid access token |
+| Lock one user out now | `PATCH /api/v1/users/{id}` with `{"is_active": false}` as an org admin, or `UPDATE users SET is_active=false WHERE id=...` | Next request returns 401, even with a valid access token. Download URLs already issued to that user remain valid until they expire (at most 300 s) |
 | Freeze a whole organization | `UPDATE organizations SET is_active=false WHERE id='...'` | All its tokens and share links stop working immediately |
 | Kill refresh tokens everywhere | `redis-cli -a "$REDIS_PASSWORD" --scan --pattern 'refresh:*' \| xargs redis-cli -a "$REDIS_PASSWORD" del` | No session can refresh; access tokens die within 15 minutes |
 | Kill every session | Rotate the JWT secret (playbook C) | All tokens invalid at once |
-| Revoke a share link | `DELETE /api/v1/documents/{id}/share-links/{link_id}` | 410 from then on |
+| Revoke a share link | `DELETE /api/v1/documents/{id}/share-links/{link_id}` | 410 from then on. URLs already issued from it keep working until their lifetime ends (60 s by default, 300 s at most) |
 | Stop a noisy source | Add an IP set rule to the WAF ACL, or tighten `allowed_ingress_cidr` | Blocked before the app |
 | Take the API out of rotation | Deregister the target in the ALB target group | Users get 503; data stores untouched |
 
@@ -102,7 +102,7 @@ Correlate with application logs by `request_id` (every audit row carries it) and
 
 1. Re-apply Terraform to restore `block_public_acls`, `block_public_policy`, TLS-only and encryption-required policies (`terraform plan` shows the drift).
 2. Check CloudTrail for `PutBucketPolicy`, `PutBucketAcl`, `DeletePublicAccessBlock` and who made the call.
-3. Versioning is on: restore deleted or overwritten objects from previous versions; noncurrent versions are retained 90 days.
+3. Versioning is on: restore deleted or overwritten objects from previous versions; noncurrent versions are retained 90 days. The same retention means an admin hard delete does not erase data immediately: purge versions with a privileged operator role when erasure is required.
 
 ### G. Data loss or corruption
 

@@ -31,24 +31,28 @@ def main() -> None:
         page.wait_for_timeout(1500)
         page.screenshot(path=str(out / "compose-swagger-ui.png"))
 
+        # Every page must show its expected content, otherwise this fails instead of saving a blank image.
         page.goto("http://localhost:9090/targets", wait_until="networkidle")
-        page.wait_for_timeout(1500)
+        page.wait_for_selector("text=secure-docs-api", timeout=30000)
         page.screenshot(path=str(out / "compose-prometheus-targets.png"))
 
         page.goto("http://localhost:16686/search?service=secure-docs-api&limit=20", wait_until="networkidle")
-        page.wait_for_timeout(3000)
+        page.wait_for_selector("text=Traces", timeout=30000)
+        page.wait_for_selector("text=secure-docs-api:", timeout=30000)
         page.screenshot(path=str(out / "compose-jaeger-traces.png"))
 
-        ctx = browser.new_context(
-            viewport={"width": 1600, "height": 1200},
-            http_credentials={"username": "admin", "password": env["GRAFANA_ADMIN_PASSWORD"]},
-        )
-        g = ctx.new_page()
+        g = browser.new_page(viewport={"width": 1600, "height": 1300})
+        g.goto("http://localhost:3000/login", wait_until="networkidle")
+        g.fill("input[name=user]", "admin")
+        g.fill("input[name=password]", env["GRAFANA_ADMIN_PASSWORD"])
+        g.click("button[type=submit]")
+        g.wait_for_url("**/?orgId=1*", timeout=30000)
         g.goto(
             "http://localhost:3000/d/secure-docs/secure-docs-api?orgId=1&from=now-30m&to=now&kiosk",
             wait_until="networkidle",
         )
-        g.wait_for_timeout(6000)
+        g.wait_for_selector("text=Request rate by status", timeout=30000)
+        g.wait_for_timeout(8000)  # let the panels run their queries
         g.screenshot(path=str(out / "compose-grafana-dashboard.png"))
         browser.close()
 

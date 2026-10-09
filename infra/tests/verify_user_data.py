@@ -70,19 +70,25 @@ def render(tmp: Path, with_redis: bool) -> str:
     return sh(["terraform", "output", "-raw", "script"], cwd=work).stdout
 
 
+def fixture_secrets() -> str:
+    """Fixture secret values travel to the stubbed `aws` through the environment, never to disk."""
+    return json.dumps(
+        {
+            "arn:app-secret": json.dumps(APP_SECRET),
+            "arn:db-secret": json.dumps({"username": "docs_owner", "password": RDS_PASSWORD}),
+            "arn:redis-secret": REDIS_TOKEN,
+        }
+    )
+
+
 def make_stubs(tmp: Path) -> Path:
     stubs = tmp / "bin"
     stubs.mkdir()
     log = tmp / "calls.log"
-    secrets = {
-        "arn:app-secret": json.dumps(APP_SECRET),
-        "arn:db-secret": json.dumps({"username": "docs_owner", "password": RDS_PASSWORD}),
-        "arn:redis-secret": REDIS_TOKEN,
-    }
     (stubs / "aws").write_text(
-        "#!/usr/bin/env python3\nimport sys, json\n"
+        "#!/usr/bin/env python3\nimport sys, json, os\n"
         f"open({str(log)!r}, 'a').write('aws ' + ' '.join(sys.argv[1:]) + '\\n')\n"
-        f"S = {secrets!r}\n"
+        "S = json.loads(os.environ['FIXTURE_SECRETS'])\n"
         "a = sys.argv[1:]\n"
         "if 'get-secret-value' in a: print(S[a[a.index('--secret-id') + 1]])\n"
         "elif 'get-login-password' in a: print('ecr-token')\n"
@@ -128,7 +134,10 @@ def main() -> int:
                 .replace("/var/log/user-data.log", f"{root}/var/log/user-data.log")
             )
             (tmp / "calls.log").write_text("")
-            res = sh(["bash", "-c", sandboxed], env={**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}"})
+            res = sh(
+                ["bash", "-c", sandboxed],
+                env={**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", "FIXTURE_SECRETS": fixture_secrets()},
+            )
             check(res.returncode == 0, f"script completes (exit {res.returncode}) {res.stderr[-200:]}")
             calls = (tmp / "calls.log").read_text().splitlines()
             order = [

@@ -9,6 +9,7 @@ make secrets          # writes .env with random secrets and .secrets/metrics_tok
 docker compose up --build -d
 curl localhost:8000/health/ready
 python scripts/demo.py --base-url http://localhost:8000
+python scripts/verify_observability.py --env-file .env   # Prometheus, Jaeger and Grafana receive real data
 ```
 
 | URL | What |
@@ -19,7 +20,9 @@ python scripts/demo.py --base-url http://localhost:8000
 | http://localhost:3000 | Grafana (admin password in `.env`), dashboard "Secure Docs API" |
 | http://localhost:16686 | Jaeger traces |
 
-The first build compiles MinIO from source (a few minutes) because the project no longer publishes container images. If you have access to a MinIO image you trust, replace the `build:` entry of the `minio` service with `image:`.
+The first build compiles MinIO from source (a few minutes) because the project no longer publishes container images, and the upstream repository is no longer maintained and is AGPL-licensed. It is a local development fixture only; read the caveats in [infrastructure-review.md](infrastructure-review.md#minio-source-build-strategy-for-local-development) before reusing it anywhere else. Any S3-compatible server can replace it by changing the `minio` service and `S3_*` variables.
+
+To regenerate the screenshots in `docs/img` from the running stack: `pip install playwright && playwright install chromium && python scripts/capture_screenshots.py --env-file .env --out docs/img`.
 
 Tear down with `docker compose down -v`.
 
