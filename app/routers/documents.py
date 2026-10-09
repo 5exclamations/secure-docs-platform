@@ -86,6 +86,20 @@ async def _put_new_version(
         raise
 
 
+async def _commit_or_cleanup(request: Request, db: AsyncSession, key: str) -> None:
+    """The object is already in storage when the transaction commits; if the commit fails (or the
+    client disconnects mid-request) remove it so no orphaned, unreferenced object remains."""
+    try:
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        try:
+            await request.app.state.store.delete(key)
+        except Exception as exc:  # best effort; the lifecycle rule is the backstop
+            log.error("orphan_cleanup_failed", error=str(exc))
+        raise
+
+
 def _presign(request: Request, v: DocumentVersion) -> DownloadOut:
     ttl = request.app.state.settings.presign_ttl_seconds
     url = request.app.state.store.presign_get(v.s3_key, v.original_filename, v.content_type, ttl)
@@ -147,7 +161,7 @@ async def create_document(
             resource_id=doc.id,
             details={"size": upload.size, "sha256": upload.sha256, "version": 1},
         )
-        await db.commit()
+        await _commit_or_cleanup(request, db, version.s3_key)
     finally:
         upload.file.close()
     request.app.state.metrics.documents.labels("upload").inc()
@@ -250,7 +264,7 @@ async def upload_version(
             resource_id=doc.id,
             details={"version": version.version, "size": upload.size, "sha256": upload.sha256},
         )
-        await db.commit()
+        await _commit_or_cleanup(request, db, version.s3_key)
     finally:
         upload.file.close()
     request.app.state.metrics.documents.labels("new_version").inc()

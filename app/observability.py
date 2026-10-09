@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from typing import Any
 
@@ -25,6 +26,21 @@ _SENSITIVE = {
     "secret",
     "cookie",
 }
+
+
+_SHARE_TOKEN = re.compile(r"(/shared/)[^/?#]+")
+
+
+def scrub_url(value: str) -> str:
+    """Share-link tokens are bearer secrets that live in the URL path: never record them."""
+    return _SHARE_TOKEN.sub(r"\1{token}", value)
+
+
+def _redact_span(span: Any, scope: dict[str, Any]) -> None:
+    for key in ("http.target", "http.url", "url.path", "url.full", "http.route_raw"):
+        value = span.attributes.get(key) if span.attributes else None
+        if isinstance(value, str):
+            span.set_attribute(key, scrub_url(value))
 
 
 def _redact(_: Any, __: str, event: dict[str, Any]) -> dict[str, Any]:
@@ -121,5 +137,7 @@ def setup_tracing(
         provider.add_span_processor(extra_processor)
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-    FastAPIInstrumentor.instrument_app(app, tracer_provider=provider, excluded_urls="health,metrics")
+    FastAPIInstrumentor.instrument_app(
+        app, tracer_provider=provider, excluded_urls="health,metrics", server_request_hook=_redact_span
+    )
     return provider

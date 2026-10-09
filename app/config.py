@@ -96,6 +96,8 @@ class Settings(BaseSettings):
                 raise ValueError("Wildcard CORS origin is not allowed in staging/production")
             if self.allowed_host_list == ["*"]:
                 raise ValueError("ALLOWED_HOSTS must be set explicitly in staging/production")
+            if self.metrics_token is None:
+                raise ValueError("METRICS_TOKEN must be set in staging/production")
             if self.enable_docs:
                 raise ValueError("ENABLE_DOCS must be false in staging/production")
         return self

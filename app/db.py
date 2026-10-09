@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 
+import structlog
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
@@ -47,3 +48,25 @@ async def set_tenant(session: AsyncSession, org_id: uuid.UUID) -> None:
     """Bind the session to a tenant for the current and all following transactions."""
     session.info["org_id"] = org_id
     await session.execute(text("SELECT set_config('app.org_id', :org, true)"), {"org": str(org_id)})
+
+
+async def assert_unprivileged_db_role(engine: AsyncEngine, settings: Settings) -> None:
+    """Row level security does not apply to superusers, BYPASSRLS roles or table owners. If the
+    API were started with the migration (owner) credentials, tenant isolation would silently drop
+    to the application layer only, so refuse to start (log loudly in local development)."""
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    "SELECT r.rolsuper OR r.rolbypassrls AS bypass, "
+                    "EXISTS (SELECT 1 FROM pg_tables t WHERE t.schemaname = 'public' "
+                    "AND t.tablename = 'documents' AND t.tableowner = current_user) AS owner "
+                    "FROM pg_roles r WHERE r.rolname = current_user"
+                )
+            )
+        ).one()
+    if row.bypass or row.owner:
+        message = "database role can bypass row level security (superuser, BYPASSRLS or table owner)"
+        if settings.environment != "local":
+            raise RuntimeError(f"Refusing to start: {message}")
+        structlog.get_logger().warning("rls_bypass_possible", detail=message)

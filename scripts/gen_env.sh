@@ -17,6 +17,7 @@ METRICS_TOKEN=${METRICS_TOKEN}
 GRAFANA_ADMIN_PASSWORD=$(rand)
 ENV
 mkdir -p .secrets
+chmod 755 .secrets      # traversable by the non-root Prometheus container (local dev only)
 printf '%s' "${METRICS_TOKEN}" > .secrets/metrics_token
 chmod 644 .secrets/metrics_token   # read by the (non-root) Prometheus container; local dev only
 echo "Wrote .env and .secrets/metrics_token"

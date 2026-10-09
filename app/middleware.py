@@ -10,7 +10,7 @@ import structlog
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.observability import Metrics
+from app.observability import Metrics, scrub_url
 
 log = structlog.get_logger("access")
 _REQ_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -128,7 +128,7 @@ class RequestContextMiddleware:
         except BodyTooLarge:
             pass  # 413 already sent by limited_receive
         except Exception:
-            log.exception("unhandled_exception", method=method, path=scope["path"])
+            log.exception("unhandled_exception", method=method, path=scrub_url(scope["path"]))
             raise
         finally:
             route = scope.get("route")
@@ -161,3 +161,31 @@ class RequestContextMiddleware:
         ]
         await send({"type": "http.response.start", "status": 413, "headers": headers})
         await send({"type": "http.response.body", "body": body})
+
+
+class HostValidationMiddleware:
+    """Rejects requests whose Host header is not allow-listed (host header attacks, cache
+    poisoning). Liveness/readiness paths are exempt: the ALB health checker addresses targets by
+    private IP, so enforcing the public host name there would mark every target unhealthy."""
+
+    EXEMPT = frozenset({"/health", "/health/ready"})
+
+    def __init__(self, app: ASGIApp, allowed_hosts: list[str]) -> None:
+        self.app = app
+        self.allowed = {h.lower() for h in allowed_hosts}
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] not in self.EXEMPT:
+            host = dict(scope["headers"]).get(b"host", b"").decode("latin-1").split(":")[0].lower()
+            if host not in self.allowed:
+                body = b"Invalid host header"
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 400,
+                        "headers": [(b"content-type", b"text/plain"), (b"content-length", str(len(body)).encode())],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)

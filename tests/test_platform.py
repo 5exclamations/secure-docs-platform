@@ -59,15 +59,18 @@ async def test_no_cors_by_default(client):
     assert "access-control-allow-origin" not in r.headers
 
 
-async def test_trusted_host_enforced(make_settings):
+async def test_trusted_host_enforced_but_health_checks_exempt(make_settings):
     app = create_app(make_settings(allowed_hosts="api.example.com"))
     async with app.router.lifespan_context(app):
         good = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api.example.com")
-        bad = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://evil.example")
+        alb = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://10.20.11.5:8000")
         assert (await good.get("/health")).status_code == 200
-        assert (await bad.get("/health")).status_code == 400
+        assert (await alb.get("/api/v1/users/me")).status_code == 400  # wrong Host header
+        # the ALB health checker addresses targets by IP; it must not be refused
+        assert (await alb.get("/health")).status_code == 200
+        assert (await alb.get("/health/ready")).status_code == 200
         await good.aclose()
-        await bad.aclose()
+        await alb.aclose()
 
 
 async def test_json_body_size_limit(client, new_org):
@@ -219,6 +222,7 @@ def test_production_config_is_validated():
         jwt_secret=SECRET,
         allowed_hosts="api.example.com",
         enable_docs=False,
+        metrics_token="m" * 20,
     )
     Settings(**base)
     for override in (
@@ -227,6 +231,7 @@ def test_production_config_is_validated():
         {"cors_origins": "*"},
         {"allowed_hosts": "*"},
         {"enable_docs": True},
+        {"metrics_token": None},
         {"jwt_secret": None},
     ):
         with pytest.raises(ValidationError):
@@ -305,3 +310,33 @@ async def test_rs256_tokens_jwks_and_alg_confusion(make_settings):
             and "RS256" in disc["id_token_signing_alg_values_supported"]
         )
         await c.aclose()
+
+
+async def test_share_token_never_reaches_traces(make_settings, tracing_processor, span_exporter):
+    app = create_app(make_settings(), span_processor=tracing_processor)
+    token = "0" * 32 + ".VERY-SECRET-SHARE-TOKEN"
+    async with app.router.lifespan_context(app):
+        c = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t")
+        await c.post(f"/api/v1/shared/{token}/download", headers={"X-Forwarded-For": next_ip()})
+        await c.aclose()
+    spans = span_exporter.get_finished_spans()
+    assert spans
+    for span in spans:
+        assert "VERY-SECRET" not in repr(dict(span.attributes or {})), span.name
+        assert "VERY-SECRET" not in span.name
+
+
+def test_scrub_url():
+    from app.observability import scrub_url
+
+    assert scrub_url("/api/v1/shared/abc.def/download") == "/api/v1/shared/{token}/download"
+    assert scrub_url("http://h/api/v1/shared/abc.def/download?x=1") == "http://h/api/v1/shared/{token}/download?x=1"
+    assert scrub_url("/api/v1/documents/1") == "/api/v1/documents/1"
+
+
+async def test_api_refuses_to_start_with_a_role_that_bypasses_rls(make_settings, services):
+    """Starting the API with the migration (owner) credentials would silently disable RLS."""
+    app = create_app(make_settings(database_url=services.owner_url))
+    with pytest.raises(RuntimeError, match="row level security"):
+        async with app.router.lifespan_context(app):
+            pass

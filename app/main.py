@@ -8,11 +8,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry.sdk.trace import SpanProcessor
 from redis.asyncio import Redis
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings, get_settings
-from app.db import create_engine, create_session_factory
-from app.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from app.db import assert_unprivileged_db_role, create_engine, create_session_factory
+from app.middleware import HostValidationMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware
 from app.observability import Metrics, configure_logging, setup_tracing
 from app.redis_stores import RateLimiter, TokenStore
 from app.routers import audit, auth, documents, health, shared, users
@@ -44,6 +43,7 @@ def create_app(settings: Settings | None = None, span_processor: SpanProcessor |
         app.state.token_store = TokenStore(redis, settings.refresh_token_ttl_seconds)
         app.state.limiter = RateLimiter(redis)
         app.state.store = ObjectStore(settings)
+        await assert_unprivileged_db_role(engine, settings)
         if app.state.tracer_provider is not None:
             from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
@@ -72,7 +72,7 @@ def create_app(settings: Settings | None = None, span_processor: SpanProcessor |
     # Order matters: the last added is the outermost. Request context wraps everything so even
     # rejected hosts/CORS preflights get a request id, metrics and security headers.
     if settings.allowed_host_list != ["*"]:
-        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
+        app.add_middleware(HostValidationMiddleware, allowed_hosts=settings.allowed_host_list)
     if settings.cors_origin_list:
         app.add_middleware(
             CORSMiddleware,

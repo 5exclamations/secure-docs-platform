@@ -4,7 +4,8 @@
 set -euo pipefail
 exec > >(tee /var/log/user-data.log) 2>&1
 
-dnf install -y docker jq awscli
+# AWS CLI v2 ships with Amazon Linux 2023 (there is no 'awscli' package to install).
+dnf install -y docker jq
 systemctl enable --now docker
 
 REGION="${region}"
