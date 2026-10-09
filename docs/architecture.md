@@ -113,7 +113,7 @@ sequenceDiagram
   A->>A: stream to temp file, count bytes (413 over 50 MB), sha256
   A->>A: type allowlist + magic-byte check, sanitize filename
   A->>S: PUT {org}/{doc}/{random uuid}  (SSE-KMS)
-  A->>D: BEGIN; lock document row; version = current + 1; INSERT version; audit; COMMIT
+  A->>D: BEGIN, lock document row, version = current + 1, INSERT version, audit, COMMIT
   Note over A,S: if the DB step fails the object is deleted
   C->>A: GET /documents/{id}/download
   A->>D: authorize, audit document.download
