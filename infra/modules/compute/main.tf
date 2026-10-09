@@ -110,6 +110,7 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
   to_port                      = 8000
 }
 
+#trivy:ignore:AWS-0104:HTTPS egress through NAT is required for ECR, Secrets Manager, CloudWatch and image pulls. Replace with VPC interface endpoints plus prefix lists to remove it (costs about 7 USD per endpoint per month).
 resource "aws_vpc_security_group_egress_rule" "app_https" {
   security_group_id = aws_security_group.app.id
   description       = "HTTPS to AWS APIs and the package mirrors via NAT"
@@ -268,6 +269,7 @@ resource "aws_instance" "app" {
 }
 
 # ---- load balancer ----------------------------------------------------------------------------
+#trivy:ignore:AWS-0053:The ALB is the intended public entry point; narrow allowed_ingress_cidr for private deployments.
 resource "aws_lb" "this" {
   #checkov:skip=CKV_AWS_91:ALB access logs need a dedicated log bucket; request-level audit comes from the application log. Enable for regulated workloads.
   #checkov:skip=CKV2_AWS_28:WAF is an optional module (enable_waf = true) because it adds a fixed monthly cost; recommended for production.
