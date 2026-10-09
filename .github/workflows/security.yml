@@ -73,7 +73,7 @@ jobs:
           # scanning dashboard, which needs GitHub Advanced Security on private repositories.
           upload: never
           output: codeql-results
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: codeql-sarif
           path: codeql-results

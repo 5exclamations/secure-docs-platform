@@ -80,7 +80,7 @@ jobs:
             -c "CREATE ROLE docs_app LOGIN PASSWORD 'ci-app-password' NOSUPERUSER NOBYPASSRLS"
       - name: Tests with coverage gate (80%)
         run: pytest --cov=app --cov-report=xml --cov-report=term-missing
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: coverage-xml
           path: coverage.xml
@@ -205,7 +205,7 @@ jobs:
           pip install playwright==1.58.0
           playwright install --with-deps chromium
           python scripts/capture_screenshots.py --env-file .env --out screenshots
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: compose-screenshots
