@@ -32,11 +32,11 @@ def main() -> None:
         page.screenshot(path=str(out / "compose-swagger-ui.png"))
 
         # Every page must show its expected content, otherwise this fails instead of saving a blank image.
-        page.goto("http://localhost:9090/targets", wait_until="networkidle")
+        page.goto("http://localhost:9090/targets", wait_until="load")
         page.wait_for_selector("text=secure-docs-api", timeout=30000)
         page.screenshot(path=str(out / "compose-prometheus-targets.png"))
 
-        page.goto("http://localhost:16686/search?service=secure-docs-api&limit=20", wait_until="networkidle")
+        page.goto("http://localhost:16686/search?service=secure-docs-api&limit=20", wait_until="load")
         page.wait_for_selector("text=Traces", timeout=30000)
         page.wait_for_selector("text=secure-docs-api:", timeout=30000)
         page.screenshot(path=str(out / "compose-jaeger-traces.png"))
