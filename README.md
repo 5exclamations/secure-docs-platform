@@ -1,5 +1,9 @@
 # Secure Document Platform
 
+[![CI](https://github.com/5exclamations/secure-docs-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/5exclamations/secure-docs-platform/actions/workflows/ci.yml)
+[![Security](https://github.com/5exclamations/secure-docs-platform/actions/workflows/security.yml/badge.svg)](https://github.com/5exclamations/secure-docs-platform/actions/workflows/security.yml)
+[![Infrastructure](https://github.com/5exclamations/secure-docs-platform/actions/workflows/infra.yml/badge.svg)](https://github.com/5exclamations/secure-docs-platform/actions/workflows/infra.yml)
+
 A multi-tenant document management API with security engineering as the main subject: tenant isolation enforced at four layers including PostgreSQL row level security, short-lived signed downloads, expiring sharing, an append-only audit trail, and the infrastructure, pipelines, observability and runbooks around it. The AWS side is reference infrastructure that was validated and policy-scanned, not deployed.
 
 **Stack:** Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL 16, Redis 7, S3-compatible storage, Docker Compose, Terraform (AWS), GitHub Actions, Prometheus, Grafana, OpenTelemetry, Jaeger, pytest.
