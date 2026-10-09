@@ -232,9 +232,11 @@ resource "aws_instance" "app" {
   monitoring                  = true
 
   metadata_options {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required" # IMDSv2 only: blunts SSRF credential theft
-    http_put_response_hop_limit = 1
+    http_endpoint = "enabled"
+    http_tokens   = "required" # IMDSv2 only: blunts SSRF credential theft
+    # 2, not 1: the API runs in a container on the docker bridge, which adds a network hop. With 1 the
+    # IMDSv2 token response never reaches the container and the SDK cannot obtain role credentials.
+    http_put_response_hop_limit = 2
   }
 
   root_block_device {

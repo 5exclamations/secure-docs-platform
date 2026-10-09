@@ -46,7 +46,7 @@ IDs are referenced from [security-controls.md](security-controls.md).
 | T17 | Denial of service | Abuse of the lockout to lock a victim out | Accepted: lockout is per account and expires after 15 minutes; the IP limit still applies. See residual risks. | n/a |
 | T18 | Elevation | Viewer escalates through a write grant | Role ceiling intersects every grant | `test_viewer_role_caps_a_write_grant` |
 | T19 | Elevation | Last admin removed, org locked out | Guard against demoting or deactivating the last active admin | `test_cannot_remove_last_admin` |
-| T20 | Elevation | Instance credential theft through SSRF | IMDSv2 required with hop limit 1; instance role scoped to one bucket, its KMS key and three secrets | Terraform `metadata_options`, IAM policy |
+| T20 | Elevation | Instance credential theft through SSRF | IMDSv2 required (hop limit 2 so the containerised API can reach it; host-network or IMDS proxying would allow 1); instance role scoped to one bucket, its KMS key and three secrets | Terraform `metadata_options`, IAM policy |
 | T21 | Tampering | Cross-origin attacks from a hostile site | No CORS unless origins are configured, no wildcard in staging/production, bearer tokens (no cookies, so no CSRF surface) | `test_cors_locked_to_configured_origins`, `test_no_cors_by_default` |
 | T22 | Information disclosure | Metrics endpoint exposes internals | Bearer token, plus ALB rule that returns 404 for `/metrics` on the public listener | `test_metrics_requires_token_when_configured` |
 | T23 | Tampering | Supply chain: vulnerable dependency or base image | Pinned requirements, Dependabot, pip-audit, Trivy (fs and image), CodeQL, Semgrep, gitleaks, ECR scan on push | CI workflows |

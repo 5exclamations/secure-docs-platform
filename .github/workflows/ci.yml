@@ -28,8 +28,8 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - run: pip install -r requirements-dev.txt
-      - run: ruff check app tests migrations scripts
-      - run: ruff format --check app tests migrations scripts
+      - run: ruff check app tests migrations scripts infra/tests
+      - run: ruff format --check app tests migrations scripts infra/tests
       - run: mypy
 
   unit:

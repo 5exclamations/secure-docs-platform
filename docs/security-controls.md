@@ -15,7 +15,7 @@ Each control names where it is implemented and which automated check proves it. 
 | A07 Identification and authentication failures | Password policy (length, common list, no email), IP and per-account throttling, generic failures, refresh rotation with replay detection, logout revokes the family, immediate effect of deactivation | `app/routers/auth.py`, `app/redis_stores.py`, `app/deps.py` | `test_auth.py` |
 | A08 Software and data integrity failures | SHA-256 stored per version and returned with each download; immutable ECR tags; CI gates before image push | `app/uploads.py`, `infra/modules/compute` | roundtrip test compares hashes |
 | A09 Logging and monitoring failures | Audit trail for authentication, access, sharing and denials; JSON logs with request and trace ids; Prometheus alerts for replay, denial spikes, login failures | `app/audit.py`, `deploy/prometheus/alerts.yml` | `test_login_is_audited`, `test_download_is_audited`, denial audit assertions |
-| A10 SSRF | The service never fetches user-supplied URLs; IMDSv2 required with hop limit 1; egress limited to 443 and the VPC | `infra/modules/compute` | design; Checkov |
+| A10 SSRF | The service never fetches user-supplied URLs; IMDSv2 required (hop limit 2 for the container); egress limited to 443 and the VPC | `infra/modules/compute` | design; Checkov |
 
 ## Required controls from the brief
 
